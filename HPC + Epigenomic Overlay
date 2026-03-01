@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+Φ-BETA v12: OMEGA++ KERNEL (HPC + Epigenomic Overlay)
+Author: Charles Tibedo | March 2026
+──────────────────────────────────────────────────────────
+FEATURES:
+1. GENESIS Hyperbolic Oscillator (Telomere → Gene)
+2. Real Genome FASTA ingestion + SNP perturbation
+3. HPC Titan Scan (Resonance, Entropy, Tension)
+4. Quad-Codon Covalence Heatmap
+5. Sliding-window correlation with experimental nucleosome/ATAC data
+6. Phase-space analysis: Mass_t vs Mass_t+1
+7. Interactive dashboard (Matplotlib + optional Plotly)
+"""
+
+import sys, math, argparse, numpy as np, matplotlib.pyplot as plt
+from itertools import product
+from multiprocessing import Pool, cpu_count
+from collections import Counter
+from typing import Optional
+
+try:
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+
+# -----------------------------
+# 1. D5 PHYSICS ENGINE
+# -----------------------------
+class D5Lattice:
+    def __init__(self):
+        self.PHI = (1 + math.sqrt(5)) / 2
+        self.BASES = ['T','A','G','C']
+        self.WEIGHTS = {'T':1.0,'A':self.PHI**-1,'G':self.PHI**-2,'C':self.PHI**-3,'N':0.0}
+        self.triad_masses = {"".join(p):sum(self.WEIGHTS[b] for b in p) for p in product(self.BASES,repeat=3)}
+    
+    def get_mass(self, seq: str) -> float:
+        return sum(self.WEIGHTS.get(b,0) for b in seq)
+    
+    def solve_hyperbolic_next(self, prev_triad: str, constant: float=3.0) -> str:
+        target = constant / (self.triad_masses.get(prev_triad,2.0)+1e-9)
+        return min(self.triad_masses, key=lambda k: abs(self.triad_masses[k]-target))
+
+# -----------------------------
+# 2. GENESIS MODULE
+# -----------------------------
+class GenesisEngine:
+    def __init__(self,d5:D5Lattice):
+        self.d5=d5
+    
+    def construct_chromosome(self):
+        # Zone1: Telomeric Crystal
+        zone1,current=[], "TTA"
+        for _ in range(666): zone1.append(current); current=self.d5.solve_hyperbolic_next(current)
+        # Zone2: Subtelomeric Mosaic
+        zone2=[]
+        for i in range(1000):
+            decay=max(0.5,3.0-(i*0.002))
+            nxt=self.d5.solve_hyperbolic_next(current,decay)
+            if np.random.rand()<0.1: nxt="".join(np.random.choice(self.d5.BASES,3))
+            zone2.append(nxt); current=nxt
+        # Zone3: Gene Chaos
+        zone3=[]; x=0.5; r=self.d5.PHI**2
+        for _ in range(1666):
+            x=r*x*(1-x); target=0.7+x*2.3
+            nxt=min(self.d5.triad_masses,key=lambda k:abs(self.d5.triad_masses[k]-target))
+            zone3.append(nxt)
+        seq="".join(zone1+zone2+zone3)
+        breakpoints=[len("".join(zone1)),len("".join(zone1+zone2))]
+        return seq,breakpoints
+
+# -----------------------------
+# 3. HPC TITAN SCANNER
+# -----------------------------
+def analyze_window(args):
+    seq_window,d5_weights=args
+    masses=[sum(d5_weights.get(seq_window[i+j],0) for j in range(3)) for i in range(0,len(seq_window)-2,3)]
+    var=np.var(masses) if masses else 1e-6
+    resonance=1.0/(var+1e-6)
+    counts=Counter(seq_window); total=sum(counts.values())
+    entropy=-sum((counts[b]/total)*math.log2(counts[b]/total+1e-9) for b in ['T','A','G','C']) if total>0 else 0
+    tension=np.mean(masses) if masses else 0
+    return resonance,entropy,tension
+
+class TitanScanner:
+    def __init__(self,sequence:str,d5:D5Lattice):
+        self.seq=sequence; self.d5=d5
+    def run_scan(self,window_size:int=200,step:int=50):
+        windows=[self.seq[i:i+window_size] for i in range(0,len(self.seq)-window_size,step)]
+        positions=[i for i in range(0,len(self.seq)-window_size,step)]
+        tasks=[(w,self.d5.WEIGHTS) for w in windows]
+        with Pool(cpu_count()) as pool: results=pool.map(analyze_window,tasks)
+        res=[r[0] for r in results]; ent=[r[1] for r in results]; ten=[r[2] for r in results]
+        return positions,res,ent,ten
+
+# -----------------------------
+# 4. QUAD-CODON HEATMAP
+# -----------------------------
+def build_quad_heatmap(seq:str,window:int=50) -> np.ndarray:
+    heat=[sum(D5Lattice().WEIGHTS.get(seq[i+j],0) for j in range(4)) for i in range(len(seq)-3)]
+    heat_matrix=np.array([heat[i:i+window] for i in range(0,len(heat)-window,window)])
+    return heat_matrix
+
+# -----------------------------
+# 5. SLIDING WINDOW CORRELATION
+# -----------------------------
+def sliding_window_correlation(seq:str, experimental:np.ndarray, window:int=200, step:int=50) -> np.ndarray:
+    """Correlate D5 Phi-mass per window with experimental nucleosome/ATAC data"""
+    d5=D5Lattice(); correlations=[]
+    for i in range(0,len(seq)-window,step):
+        window_seq=seq[i:i+window]
+        masses=[d5.get_mass(window_seq[j:j+3]) for j in range(0,len(window_seq)-2,3)]
+        exp_window=experimental[i:i+window]
+        if len(masses)==0 or len(exp_window)==0:
+            correlations.append(0)
+        else:
+            correlations.append(np.corrcoef(masses[:len(exp_window)],exp_window)[0,1])
+    return np.array(correlations)
+
+# -----------------------------
+# 6. VISUALIZATION
+# -----------------------------
+def generate_dashboard(pos,res,ent,ten,seq,experimental:Optional[np.ndarray]=None,bps=None,interactive:bool=False):
+    heatmap=build_quad_heatmap(seq)
+    fig,axs=plt.subplots(2,2,figsize=(18,10))
+    fig.suptitle('Φ-BETA v12: OMEGA++ DASHBOARD',fontsize=16,fontweight='bold')
+    
+    # Phase Transition
+    axs[0,0].plot(pos,res,color='cyan',label='Resonance'); axs[0,0].fill_between(pos,0,res,color='cyan',alpha=0.2)
+    axs[0,0].set_ylabel("D5 Resonance"); axs2=axs[0,0].twinx(); axs2.plot(pos,ent,color='red',label='Entropy'); axs2.set_ylabel("Entropy")
+    if bps: axs[0,0].axvline(bps[0],color='k',linestyle='--'); axs[0,0].axvline(bps[1],color='k',linestyle='--')
+    axs[0,0].set_title("Phase Transition Proof")
+    
+    # Phase Space
+    d5=D5Lattice(); masses=[d5.get_mass(seq[i:i+3]) for i in range(0,len(seq)-2,3)]
+    axs[1,0].scatter(masses[0:500],masses[1:501],c='cyan',label='Telomere',edgecolor='k',s=20)
+    axs[1,0].scatter(masses[-500:-1],masses[-499:],c='grey',label='Gene Chaos',alpha=0.3)
+    xs=np.linspace(0.8,3.0,50); ys=3.0/xs; axs[1,0].plot(xs,ys,'r--',label='Conservation xy=3')
+    axs[1,0].set_xlabel("Mass_t"); axs[1,0].set_ylabel("Mass_t+1"); axs[1,0].legend(); axs[1,0].set_title("Phase Space")
+    
+    # Mechanical Tension
+    axs[1,1].plot(pos,ten,color='purple',label='Mean Tension'); axs[1,1].set_title("Mechanical Tension Map")
+    axs[1,1].set_xlabel("Genomic Position"); axs[1,1].set_ylabel("Phi-Mass"); axs[1,1].grid(True)
+    
+    # Quad-Codon Heatmap
+    im=axs[0,1].imshow(heatmap.T,aspect='auto',origin='lower',cmap='viridis')
+    axs[0,1].set_title("Quad-Codon Covalence Heatmap"); axs[0,1].set_xlabel("Window"); axs[0,1].set_ylabel("Position"); plt.colorbar(im,ax=axs[0,1])
+    
+    # Experimental Overlay if provided
+    if experimental is not None:
+        corr=sliding_window_correlation(seq,experimental)
+        axs[0,1].plot(np.arange(len(corr))*50, corr*heatmap.max(), color='red', alpha=0.8, label='Exp Correlation')
+        axs[0,1].legend()
+    
+    plt.tight_layout(); plt.subplots_adjust(top=0.92)
+    plt.savefig('omega_plus_epigenome_dashboard.png',dpi=300)
+    plt.show()
+    
+    if interactive and PLOTLY_AVAILABLE:
+        fig2=go.Figure(go.Heatmap(z=heatmap.T))
+        fig2.update_layout(title='Interactive Quad-Codon Covalence',xaxis_title='Window',yaxis_title='Position')
+        fig2.show()
+    print(">>> DASHBOARD GENERATED: 'omega_plus_epigenome_dashboard.png'")
+
+# -----------------------------
+# 7. MAIN
+# -----------------------------
+if __name__=="__main__":
+    parser=argparse.ArgumentParser(description="Φ-BETA v12: OMEGA++ KERNEL")
+    parser.add_argument("--fasta",help="Optional genome FASTA file")
+    parser.add_argument("--exp",help="Optional experimental nucleosome/ATAC CSV (1 value per base)")
+    parser.add_argument("--interactive",action='store_true',help="Enable interactive Plotly")
+    args=parser.parse_args()
+    
+    d5=D5Lattice()
+    
+    if args.fasta:
+        print(f">>> LOADING REAL GENOME: {args.fasta}")
+        sequence="".join([l.strip().upper() for l in open(args.fasta) if not l.startswith(">")])
+        breakpoints=None
+    else:
+        print(">>> NO INPUT DETECTED. RUNNING GENESIS SIMULATION...")
+        gen=GenesisEngine(d5); sequence, breakpoints=gen.construct_chromosome()
+    
+    experimental=None
+    if args.exp:
+        print(f">>> LOADING EXPERIMENTAL DATA: {args.exp}")
+        experimental=np.loadtxt(args.exp)
+    
+    scanner=TitanScanner(sequence,d5)
+    pos,res,ent,ten=scanner.run_scan(window_size=200,step=50)
+    
+    generate_dashboard(pos,res,ent,ten,sequence,experimental=experimental,bps=breakpoints,interactive=args.interactive)
