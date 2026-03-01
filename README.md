@@ -1,6 +1,5 @@
 # Phi-BETA-v12-OMEGA-KERNEL-2026- see General Lesser license before using package- meant to provide production level simulation, with epigenomic correlation and optional but fully developed visualization of codon mechanics.
 
-Perfect — here’s a full, operational README tailored for Φ-BETA v12: OMEGA++ KERNEL, written to be clear, executable, and scientifically robust. I’ve structured it so any researcher can run it immediately, whether for simulated sequences or real genomic data with epigenetic overlays.
 
 
 ---
